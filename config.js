@@ -8,7 +8,7 @@ window.EXPERIMENT_CONFIG = {
   //  [1] 서버 설정 - 영상 호스팅 + 데이터 수집 엔드포인트
   // -------------------------------------------------------------------
   videoBase: "https://pub-2e4afc3be5d241ff86b5bd1a84710d81.r2.dev/",
-  endpoint:  "https://script.google.com/macros/s/AKfycbzItO33QmHCicAYFg9lv0t683GZmKUUsIdGmg7PTl8vpI9Q5J-754bqVJ5P2Vkfb8uQAA/exec",
+  endpoint:  "https://script.google.com/macros/s/AKfycby4K6yh5ZpjJ6qNY6FJ4rQJrbRwewLEieydHGZEKohp7myvPVatCct0RBBfqadIWMiUyw/exec",
 
 
   // -------------------------------------------------------------------
