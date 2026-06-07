@@ -23,8 +23,8 @@ const state = {
   sampleClipResponse: null,
   video1: makeVideoStats(),
   video2: makeVideoStats(),
-  quiz1: { answers: [], times: [], score: 0 },
-  quiz2: { answers: [], times: [], score: 0 },
+  quiz1: { answers: [], times: [], orders: [], score: 0 },
+  quiz2: { answers: [], times: [], orders: [], score: 0 },
   survey: {},
   currentQuizIdx: 0
 };
@@ -37,6 +37,16 @@ function makeVideoStats() {
     completed: false,
     lastPlayStart: null
   };
+}
+
+// Fisher-Yates 셔플 — 원본 배열은 건드리지 않고 새 배열 반환
+function shuffleArray(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
 
 // =====================================================================
@@ -84,8 +94,11 @@ function showSection(name) {
   window.scrollTo(0, 0);
 }
 
+// 프로그램이 일으킨 일시정지(화면 이동, 다음 버튼)는 pause 카운트에서 제외하기 위한 플래그
+let suppressPauseCount = false;
+
 function pauseAllVideos() {
-  $$('video').forEach(v => { try { v.pause(); } catch (e) {} });
+  $$('video').forEach(v => { try { suppressPauseCount = true; v.pause(); } catch (e) {} });
 }
 
 function updateProgress() {
@@ -235,7 +248,11 @@ function buildVideoSection(num) {
       Math.round(CFG.settings.requirePlayPercent * 100) +
       '% 이상 진행되어야 다음 버튼이 활성화됩니다.'),
     el('div', { class: 'video-wrap' },
-      el('video', { id: 'video' + num, controls: '', playsinline: '', preload: 'auto' })
+      el('video', { id: 'video' + num, playsinline: '', preload: 'auto',
+                    controlsList: 'nodownload noplaybackrate nofullscreen',
+                    disablePictureInPicture: '' }),
+      el('button', { class: 'btn video-play-btn', id: 'video' + num + 'Play' },
+        '▶ 영상 재생')
     ),
     el('div', { class: 'video-status', id: 'video' + num + 'Status' },
       '영상이 끝날 때까지 시청해 주세요.'),
@@ -288,6 +305,7 @@ function buildSurvey() {
     }
     if (item.type === 'scale-group') {
       const headers = ['', '매우<br>그렇지 않다', '그렇지 않다', '보통', '그렇다', '매우<br>그렇다'];
+      const anchors = ['매우 그렇지 않다', '그렇지 않다', '보통', '그렇다', '매우 그렇다'];
       return el('div', { class: 'field scale-group' },
         el('div', { class: 'scale-label' }, item.label),
         el('div', { class: 'scale-header' },
@@ -296,8 +314,9 @@ function buildSurvey() {
           el('div', { class: 'scale-row' },
             el('div', { class: 'row-label' }, row.label),
             ...[1, 2, 3, 4, 5].map(v =>
-              el('div', { class: 'scale-cell' },
-                el('input', { type: 'radio', name: 'sv_' + row.id, value: String(v) })
+              el('label', { class: 'scale-cell' },
+                el('input', { type: 'radio', name: 'sv_' + row.id, value: String(v) }),
+                el('span', { class: 'cell-anchor' }, anchors[v - 1])
               )
             )
           )
@@ -326,9 +345,10 @@ function buildSurvey() {
 
 function buildDone() {
   return el('div', { class: 'section', 'data-section': 'done' },
-    el('h2', {}, '참여 감사합니다!'),
-    el('div', { class: 'success', id: 'submitMsg' }, '데이터를 제출하고 있습니다...'),
-    el('p', { class: 'lead' }, '컴포즈커피 쿠폰은 모집 시 안내한 방법으로 발송됩니다.'),
+    el('div', { class: 'submit-status sending', id: 'submitMsg' },
+      '⏳ 데이터 전송 중입니다! 이 화면을 닫지 말고 잠시만 기다려 주세요.'),
+    el('p', { class: 'lead', id: 'doneThanks', style: 'display:none' },
+      '참여해 주셔서 감사합니다.'),
     el('div', { id: 'backupArea', style: 'display:none' },
       el('h3', {}, '백업 코드 (자동 제출 실패 시)'),
       el('p', { class: 'lead' },
@@ -432,6 +452,17 @@ function loadVideo(num) {
 
   video.src = CFG.videoBase + file;
 
+  const playBtn = document.getElementById('video' + num + 'Play');
+  // 우클릭으로 네이티브 컨트롤/다운로드 부르는 것 차단
+  video.addEventListener('contextmenu', e => e.preventDefault());
+  // 재생은 이 버튼으로만 시작 → 시작 후엔 멈추거나 되감을 컨트롤이 없음
+  if (playBtn) {
+    playBtn.addEventListener('click', () => {
+      video.play();
+      playBtn.style.display = 'none';
+    });
+  }
+
   video.addEventListener('play', () => {
     stats.lastPlayStart = Date.now();
   });
@@ -440,6 +471,7 @@ function loadVideo(num) {
       stats.totalPlayTime += (Date.now() - stats.lastPlayStart) / 1000;
       stats.lastPlayStart = null;
     }
+    if (suppressPauseCount) { suppressPauseCount = false; return; }
     if (!video.ended) stats.pauseCount++;
   });
   video.addEventListener('timeupdate', () => {
@@ -464,6 +496,7 @@ function loadVideo(num) {
   });
 
   nextBtn.addEventListener('click', () => {
+    suppressPauseCount = true;
     video.pause();
     const chapter = num === 1 ? GRP.v1_chapter : GRP.v2_chapter;
     state.currentQuizIdx = 0;
@@ -483,6 +516,7 @@ function startQuiz(num, chapterKey) {
   const target = (num === 1 ? state.quiz1 : state.quiz2);
   target.answers = [];
   target.times = [];
+  target.orders = [];
   state.currentQuizIdx = 0;
   showNextQuestion(num, chapterKey);
 }
@@ -518,10 +552,18 @@ function showNextQuestion(num, chapterKey) {
   );
 
   const opts = el('div', { class: 'options' });
-  q.opts.forEach((optText, j) => {
+  // 표시 순서를 정함: shuffleOptions가 켜져 있으면 무작위, 아니면 원래 순서
+  const order = CFG.settings.shuffleOptions
+    ? shuffleArray(q.opts.map((_, k) => k))
+    : q.opts.map((_, k) => k);
+  // 이 참가자에게 보인 순서를 기록 (위치 편향 분석용)
+  const targetForOrder = (num === 1 ? state.quiz1 : state.quiz2);
+  targetForOrder.orders[idx] = order;
+  // 핵심: value에는 표시 위치가 아니라 '원래 인덱스(origIdx)'를 넣는다 → 채점 로직 불변
+  order.forEach(origIdx => {
     const label = el('label', { class: 'option' },
-      el('input', { type: 'radio', name: 'curq', value: String(j) }),
-      el('span', { class: 'option-label' }, optText)
+      el('input', { type: 'radio', name: 'curq', value: String(origIdx) }),
+      el('span', { class: 'option-label' }, q.opts[origIdx])
     );
     opts.appendChild(label);
   });
@@ -693,6 +735,7 @@ function submitData() {
     score_first:     state.quiz1.score,
     q_times_first:   state.quiz1.times,
     q_answers_first: state.quiz1.answers,
+    q_orders_first:  state.quiz1.orders,
 
     // 2차 영상
     ch_second:   GRP.v2_chapter,
@@ -700,6 +743,7 @@ function submitData() {
     score_second:     state.quiz2.score,
     q_times_second:   state.quiz2.times,
     q_answers_second: state.quiz2.answers,
+    q_orders_second:  state.quiz2.orders,
 
     // 설문
     ...state.survey
@@ -715,14 +759,16 @@ function submitData() {
   .then(r => r.json())
   .then(res => {
     if (res.ok) {
-      $('#submitMsg').textContent = '✅ 데이터가 정상 제출되었습니다. 참여해 주셔서 감사합니다!';
+      $('#submitMsg').textContent = '✅ 데이터가 정상적으로 저장되었습니다. 이제 창을 닫으셔도 됩니다.';
+      $('#submitMsg').className = 'submit-status done';
+      $('#doneThanks').style.display = 'block';
     } else {
       throw new Error('Server error: ' + (res.error || 'unknown'));
     }
   })
   .catch(err => {
     $('#submitMsg').textContent = '⚠ 자동 제출에 실패했습니다. 아래 백업 코드를 복사하여 연구자에게 보내주세요.';
-    $('#submitMsg').className = 'alert';
+    $('#submitMsg').className = 'submit-status fail';
     $('#backupArea').style.display = 'block';
     $('#backupCode').textContent = payload.backup_code;
     console.error('Submit error:', err);

@@ -30,7 +30,8 @@ const RECOMMENDED_HEADERS = [
   'SU2a', 'SU2b', 'SU2c',
   'SU3',
   'FR1', 'FR2',
-  'backup_code'
+  'backup_code',
+  'q_orders_first', 'q_orders_second'
 ];
 
 function doPost(e) {
@@ -87,7 +88,9 @@ function doPost(e) {
       data.FR1 || '',
       data.FR2 || '',
 
-      data.backup_code || ''
+      data.backup_code || '',
+      JSON.stringify(data.q_orders_first || []),
+      JSON.stringify(data.q_orders_second || [])
     ];
 
     sheet.appendRow(row);
